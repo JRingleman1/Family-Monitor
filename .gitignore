@@ -1,0 +1,72 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Backend
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
+backend/*.so
+backend/.Python
+backend/build/
+backend/develop-eggs/
+backend/dist/
+backend/downloads/
+backend/eggs/
+backend/.eggs/
+backend/lib/
+backend/lib64/
+backend/parts/
+backend/sdist/
+backend/var/
+backend/wheels/
+backend/*.egg-info/
+backend/.installed.cfg
+backend/*.egg
+backend/MANIFEST
+backend/.venv/
+backend/venv/
+backend/ENV/
+backend/.vscode/
+backend/.idea/
+backend/*.log
+
+# Frontend
+frontend/node_modules/
+frontend/.expo/
+frontend/.expo-shared/
+frontend/dist/
+frontend/npm-debug.*
+frontend/*.jks
+frontend/*.p8
+frontend/*.p12
+frontend/*.key
+frontend/*.mobileprovision
+frontend/*.orig.*
+frontend/web-build/
+frontend/.env.local
+frontend/.env.production
+frontend/.DS_Store
+frontend/.vscode/
+frontend/.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Firebase
+firebase-debug.log
+firebaserc
+.firebaserc
+
+# IDE
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace

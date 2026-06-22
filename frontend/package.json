@@ -1,29 +1,27 @@
 {
   "name": "family-monitor",
   "version": "1.0.0",
-  "description": "Family monitoring and chore management app",
-  "main": "node_modules/expo/AppEntry.js",
+  "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "eject": "expo eject",
     "test": "jest",
     "lint": "eslint .",
-    "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx}\""
+    "format": "prettier --write \"src/**/*.{js,jsx}\" \"app/**/*.{js,jsx}\""
   },
   "dependencies": {
-    "expo": "^50.0.0",
+    "expo": "~50.0.0",
+    "expo-router": "~3.4.0",
     "expo-splash-screen": "~0.26.0",
     "expo-status-bar": "~1.11.1",
+    "expo-constants": "~15.4.0",
     "react": "18.2.0",
     "react-native": "0.73.0",
     "react-native-screens": "~3.27.0",
-    "react-navigation": "^6.1.7",
-    "react-navigation-bottom-tabs": "^6.5.11",
-    "react-navigation-native": "^6.1.9",
-    "react-navigation-stack": "^6.3.17",
+    "react-native-safe-area-context": "4.8.2",
+    "@react-native-async-storage/async-storage": "1.21.0",
     "firebase": "^10.6.0",
     "axios": "^1.6.2",
     "zustand": "^4.4.0"
@@ -31,8 +29,6 @@
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "@testing-library/react-native": "^12.0.0",
-    "@types/react": "~18.2.0",
-    "@types/react-native": "~0.73.0",
     "eslint": "^8.50.0",
     "jest": "^29.7.0",
     "prettier": "^3.1.0",

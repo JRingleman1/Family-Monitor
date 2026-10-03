@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './state/AuthContext';
 import { HouseholdProvider } from './state/HouseholdContext';
 import { configProblem } from './firebase/client';
 import CreateHousehold from './screens/CreateHousehold';
+import FinishSetup from './screens/FinishSetup';
 import SignIn from './screens/SignIn';
 import KidHome from './screens/kid/KidHome';
 import ParentHome from './screens/parent/ParentHome';
@@ -61,21 +62,11 @@ function Routes() {
     );
   }
 
-  // Signed in but no member document: setup was interrupted, or a parent has not
-  // finished adding this account.
-  if (!member) {
-    return (
-      <div className="app">
-        <h1>Almost there</h1>
-        <Card variant="error">
-          <p>
-            You're signed in, but this account is not attached to a family yet. A parent needs
-            to finish adding it.
-          </p>
-        </Card>
-      </div>
-    );
-  }
+  // Signed in but no member document. Either setup failed partway - the auth
+  // account is created before any Firestore write, so a failure in between
+  // strands you here - or a parent has not finished adding this account.
+  // Either way it is recoverable, so offer the way out rather than a dead end.
+  if (!member) return <FinishSetup />;
 
   return member.role === 'parent' ? <ParentHome /> : <KidHome />;
 }

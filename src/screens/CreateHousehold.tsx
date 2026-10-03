@@ -1,20 +1,8 @@
 import { useState } from 'react';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { getAuthClient, getDb } from '../firebase/client';
-import { paths } from '../data/paths';
-import { DEFAULT_SETTINGS } from '../domain/types';
+import { getAuthClient } from '../firebase/client';
+import { explainProvisionError, provisionHousehold } from '../data/provision';
 import { Card, ErrorNote } from '../components/ui';
-
-/** Short, typeable, and not guessable from a name. Kids type this once. */
-function householdCode(): string {
-  const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
-  let out = '';
-  const bytes = new Uint8Array(8);
-  crypto.getRandomValues(bytes);
-  for (const byte of bytes) out += alphabet[byte % alphabet.length];
-  return out;
-}
 
 /**
  * First run. Creates the household, the first parent, and the default settings
@@ -39,36 +27,18 @@ export default function CreateHousehold({ onBack }: { onBack: () => void }) {
         email.trim(),
         password,
       );
-      const uid = credential.user.uid;
-      const hid = householdCode();
-      const db = getDb();
-
-      // The member document has to land before the household document, because
-      // the household's own write rule asks whether you are a parent of it.
-      await setDoc(paths.member(db, hid, uid), {
-        householdId: hid,
-        displayName: displayName.trim() || 'Parent',
-        role: 'parent',
-        loginEmail: email.trim(),
-        avatarColor: '#6d8cff',
-        isPrimaryCaregiver: false,
-        createdAt: serverTimestamp(),
+      await provisionHousehold({
+        uid: credential.user.uid,
+        email: email.trim(),
+        familyName,
+        displayName,
       });
-      await setDoc(doc(db, 'userIndex', uid), { householdId: hid });
-      await setDoc(paths.household(db, hid), {
-        name: familyName.trim() || 'Our family',
-        createdAt: serverTimestamp(),
-        createdBy: uid,
-      });
-      await setDoc(paths.settings(db, hid), { ...DEFAULT_SETTINGS });
     } catch (err) {
       const code = (err as { code?: string })?.code ?? '';
       setError(
         code === 'auth/email-already-in-use'
           ? 'That email already has an account. Sign in instead.'
-          : err instanceof Error
-            ? err.message
-            : 'Could not create the household.',
+          : explainProvisionError(err),
       );
     } finally {
       setBusy(false);

@@ -10,8 +10,23 @@
  *   node scripts/seed.mjs --email you@example.com --password 'yourpassword' \
  *        --track-a "Ellie" --track-b "Maya"
  *
- * Re-running is safe: chores and prizes are matched on title, so an existing
- * one is updated rather than duplicated.
+ * THIS SCRIPT NEVER OVERWRITES YOUR EDITS.
+ *
+ * An earlier version matched rows by title and updated them, which was
+ * destructive in two ways at once: renaming a prize in the app meant the
+ * original title matched nothing, so re-running pasted the placeholder back in
+ * alongside the renamed one; and editing a chore's minutes while keeping its
+ * title meant re-running silently reverted them.
+ *
+ * Every row this script creates now carries a stable `seedKey`, so it can
+ * recognise its own work regardless of what you have since renamed. By default
+ * anything already present is LEFT ALONE. Your titles, your minute values and
+ * your tuned tracks survive every re-run.
+ *
+ * Flags:
+ *   --dry-run   Show what would happen and write nothing.
+ *   --update    Deliberately overwrite seeded rows back to the defaults in
+ *               tracks.mjs. Only use this when you want the defaults back.
  */
 
 import { readFileSync } from 'node:fs';
@@ -28,6 +43,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { SHARED_PRIZES, TRACK_A, TRACK_B } from './tracks.mjs';
+import { findExisting, planRow, seedKey } from './seed-plan.mjs';
 
 function parseArgs(argv) {
   const out = {};
@@ -129,32 +145,87 @@ const kidB = findChild(trackBName);
 console.log(`Momentum track    -> ${kidA.displayName} (${kidA.id})`);
 console.log(`Contribution track -> ${kidB.displayName} (${kidB.id})`);
 
+const dryRun = args['dry-run'] === 'true';
+const update = args.update === 'true';
+
+if (dryRun) console.log('\n-- DRY RUN: nothing will be written --\n');
+
+const summary = { created: 0, skipped: 0, updated: 0 };
+
 /* ------------------------------------------------------------- policies */
+
+const existingPolicies = await getDocs(
+  collection(db, 'households', householdId, 'childPolicies'),
+);
+const policyIds = new Set(existingPolicies.docs.map((d) => d.id));
 
 for (const [child, track] of [
   [kidA, TRACK_A],
   [kidB, TRACK_B],
 ]) {
-  await setDoc(
-    doc(db, 'households', householdId, 'childPolicies', child.id),
-    { ...track.policy },
-    { merge: true },
+  const exists = policyIds.has(child.id);
+  if (exists && !update) {
+    console.log(`Policy for ${child.displayName}: already set, left alone`);
+    summary.skipped += 1;
+    continue;
+  }
+  if (!dryRun) {
+    await setDoc(
+      doc(db, 'households', householdId, 'childPolicies', child.id),
+      { ...track.policy },
+      { merge: true },
+    );
+  }
+  console.log(
+    `Policy for ${child.displayName}: ${exists ? 'reset to' : 'set to'} ${track.policy.label}`,
   );
-  console.log(`Policy written for ${child.displayName}: ${track.policy.label}`);
+  if (exists) summary.updated += 1;
+  else summary.created += 1;
 }
 
 /* --------------------------------------------------------------- chores */
 
 const existingChores = await getDocs(collection(db, 'households', householdId, 'chores'));
-const choreByTitle = new Map(
-  existingChores.docs.map((d) => [String(d.data().title).toLowerCase(), d.ref]),
-);
+const choreBySeedKey = new Map();
+const choreByTitle = new Map();
+for (const d of existingChores.docs) {
+  const data = d.data();
+  if (data.seedKey) choreBySeedKey.set(data.seedKey, d);
+  choreByTitle.set(String(data.title).toLowerCase(), d);
+}
 
 const choreBatch = writeBatch(db);
-let choresWritten = 0;
+let choreWrites = 0;
 
-function upsertChore(chore, assignedTo) {
-  const key = chore.title.toLowerCase();
+function upsertChore(chore, assignedTo, trackKey) {
+  const key = seedKey(trackKey, 'chore', chore.title);
+  const found = findExisting({
+    key,
+    title: chore.title,
+    bySeedKey: choreBySeedKey,
+    byTitle: choreByTitle,
+  });
+  const action = planRow({
+    existing: found?.doc,
+    hasSeedKey: found?.matchedBy === 'seedKey',
+    update,
+  });
+
+  if (action === 'skip') {
+    summary.skipped += 1;
+    return;
+  }
+  if (action === 'adopt') {
+    // Tag a row from before seedKeys existed, without touching its content.
+    if (!dryRun) {
+      choreBatch.update(found.doc.ref, { seedKey: key });
+      choreWrites += 1;
+    }
+    summary.skipped += 1;
+    return;
+  }
+
+  const existing = found?.doc;
   const payload = {
     title: chore.title,
     description: chore.description ?? '',
@@ -164,71 +235,130 @@ function upsertChore(chore, assignedTo) {
     cooldownHours: chore.cooldownHours ?? 0,
     isBaseline: chore.isBaseline ?? false,
     active: true,
+    seedKey: key,
   };
-  const existing = choreByTitle.get(key);
-  if (existing) {
-    choreBatch.update(existing, payload);
+
+  if (dryRun) {
+    console.log(`  would ${existing ? 'reset' : 'create'} chore: ${chore.title}`);
+  } else if (existing) {
+    choreBatch.update(existing.ref, payload);
+    choreWrites += 1;
   } else {
     choreBatch.set(doc(collection(db, 'households', householdId, 'chores')), {
       ...payload,
       createdAt: serverTimestamp(),
     });
+    choreWrites += 1;
   }
-  choresWritten += 1;
+
+  if (existing) summary.updated += 1;
+  else summary.created += 1;
 }
 
-for (const chore of TRACK_A.chores) upsertChore(chore, [kidA.id]);
-for (const chore of TRACK_B.baselineChores) upsertChore(chore, [kidB.id]);
-for (const chore of TRACK_B.chores) upsertChore(chore, [kidB.id]);
+for (const chore of TRACK_A.chores) upsertChore(chore, [kidA.id], TRACK_A.key);
+for (const chore of TRACK_B.baselineChores) upsertChore(chore, [kidB.id], TRACK_B.key);
+for (const chore of TRACK_B.chores) upsertChore(chore, [kidB.id], TRACK_B.key);
 
-await choreBatch.commit();
-console.log(`Chores written: ${choresWritten}`);
+if (!dryRun && choreWrites > 0) await choreBatch.commit();
 
 /* --------------------------------------------------------------- prizes */
 
 const existingPrizes = await getDocs(collection(db, 'households', householdId, 'prizes'));
-const prizeByTitle = new Map(
-  existingPrizes.docs.map((d) => [String(d.data().title).toLowerCase(), d.ref]),
-);
+const prizeBySeedKey = new Map();
+const prizeByTitle = new Map();
+for (const d of existingPrizes.docs) {
+  const data = d.data();
+  if (data.seedKey) prizeBySeedKey.set(data.seedKey, d);
+  prizeByTitle.set(String(data.title).toLowerCase(), d);
+}
 
 const prizeBatch = writeBatch(db);
-let prizesWritten = 0;
+let prizeWrites = 0;
 
-function upsertPrize(prize, childId) {
+function upsertPrize(prize, childId, trackKey) {
+  const key = seedKey(trackKey, 'prize', prize.title);
+  const found = findExisting({
+    key,
+    title: prize.title,
+    bySeedKey: prizeBySeedKey,
+    byTitle: prizeByTitle,
+  });
+  const action = planRow({
+    existing: found?.doc,
+    hasSeedKey: found?.matchedBy === 'seedKey',
+    update,
+  });
+
+  if (action === 'skip') {
+    summary.skipped += 1;
+    return;
+  }
+  if (action === 'adopt') {
+    if (!dryRun) {
+      prizeBatch.update(found.doc.ref, { seedKey: key });
+      prizeWrites += 1;
+    }
+    summary.skipped += 1;
+    return;
+  }
+
+  const existing = found?.doc;
   const payload = {
     title: prize.title,
     metric: prize.metric,
     threshold: prize.threshold,
     childId,
     active: true,
+    seedKey: key,
   };
-  const existing = prizeByTitle.get(prize.title.toLowerCase());
-  if (existing) {
-    prizeBatch.update(existing, payload);
+
+  if (dryRun) {
+    console.log(`  would ${existing ? 'reset' : 'create'} prize: ${prize.title}`);
+  } else if (existing) {
+    prizeBatch.update(existing.ref, payload);
+    prizeWrites += 1;
   } else {
     prizeBatch.set(doc(collection(db, 'households', householdId, 'prizes')), {
       ...payload,
       createdAt: serverTimestamp(),
     });
+    prizeWrites += 1;
   }
-  prizesWritten += 1;
+
+  if (existing) summary.updated += 1;
+  else summary.created += 1;
 }
 
-for (const prize of TRACK_A.prizes) upsertPrize(prize, kidA.id);
-for (const prize of TRACK_B.prizes) upsertPrize(prize, kidB.id);
-for (const prize of SHARED_PRIZES) upsertPrize(prize, null);
+for (const prize of TRACK_A.prizes) upsertPrize(prize, kidA.id, TRACK_A.key);
+for (const prize of TRACK_B.prizes) upsertPrize(prize, kidB.id, TRACK_B.key);
+for (const prize of SHARED_PRIZES) upsertPrize(prize, null, 'shared');
 
-await prizeBatch.commit();
-console.log(`Prizes written: ${prizesWritten}`);
+if (!dryRun && prizeWrites > 0) await prizeBatch.commit();
 
 console.log(
-  '\nDone.\n\n' +
-    'Now do these three things, because the app cannot:\n' +
-    `  1. Open Settings and set the primary caregiver to Mom, so the x${TRACK_B.policy.caregiverMultiplier} ` +
-    'empathy multiplier lands on helping her.\n' +
-    '  2. Rewrite every prize title marked BIG ONE. A placeholder prize is worse than no prize.\n' +
-    '  3. Read docs/FAMILY_LINK.md so you know exactly what the app does and does not do\n' +
-    '     when minutes are handed over.\n',
+  `\nCreated ${summary.created}, left alone ${summary.skipped}` +
+    (summary.updated ? `, reset ${summary.updated}` : ''),
 );
+
+if (summary.skipped > 0 && !update) {
+  console.log(
+    'Rows already present were not touched, so anything you renamed or retuned\n' +
+      'in the app is intact. Pass --update only if you want the defaults back.',
+  );
+}
+
+if (dryRun) {
+  console.log('\nDry run only. Nothing was written.\n');
+} else {
+  console.log(
+    '\nDone.\n\n' +
+      'Now do these three things, because the app cannot:\n' +
+      `  1. Open Settings and set the primary caregiver, so the x${TRACK_B.policy.caregiverMultiplier} ` +
+      'empathy multiplier lands on helping her.\n' +
+      '  2. Rewrite every prize title marked BIG ONE. A placeholder prize is worse than no prize.\n' +
+      '  3. Read docs/FAMILY_LINK.md so you know exactly what the app does and does not do\n' +
+      '     when minutes are handed over.\n',
+  );
+}
 
 process.exit(0);

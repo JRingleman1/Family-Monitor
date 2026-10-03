@@ -94,8 +94,15 @@ on empathy with rungs far apart.
 The reasoning behind every value is written down in `scripts/tracks.mjs`. Read it
 before you tune anything.
 
-Re-running the script is safe — chores and prizes are matched on title and
-updated rather than duplicated.
+Re-running the script never overwrites your edits. Every row it creates carries
+a stable `seedKey`, so it recognises its own work even after you rename things,
+and anything already present is left alone. Rename prizes, retune minutes and
+adjust the tracks freely.
+
+Two flags if you need them. `--dry-run` reports what it would do and writes
+nothing. `--update` deliberately resets the seeded rows back to the defaults in
+`scripts/tracks.mjs`, which is the only way to lose your changes and takes an
+explicit choice.
 
 **Then rewrite every prize title marked `BIG ONE`.** A placeholder prize is worse
 than no prize.
@@ -125,7 +132,7 @@ npm run dev            # in another
 ## Checks
 
 ```bash
-npm test               # domain engine, 126 tests, no emulator needed
+npm test               # domain engine and seed logic, 141 tests, no emulator
 npm run test:rules     # security rules, 45 tests, boots the emulator
 npm run typecheck
 npm run build

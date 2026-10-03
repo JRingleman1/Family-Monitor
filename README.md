@@ -117,7 +117,7 @@ docs/           Setup, the Family Link situation, and the design rationale.
 
 ```bash
 npm install
-npm test            # 126 tests on the economy engine, no emulator needed
+npm test            # 141 tests on the economy engine and seed logic
 npm run test:rules  # 45 tests on the security rules, boots the emulator
 npm run dev
 ```

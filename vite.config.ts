@@ -30,6 +30,6 @@ export default defineConfig({
     environment: 'node',
     // Rules tests live in src/rules and need the emulator; they run via
     // `npm run test:rules` with its own config.
-    include: ['src/domain/**/*.test.ts'],
+    include: ['src/domain/**/*.test.ts', 'scripts/__tests__/**/*.test.ts'],
   },
 });

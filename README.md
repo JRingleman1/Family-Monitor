@@ -1,129 +1,131 @@
 # Family Monitor
 
-A comprehensive family monitoring and chore management app that gamifies household responsibilities. Kids earn screentime and app access by completing chores and demonstrating responsible behavior, while parents maintain real-time monitoring and content filtering.
+A screen-time economy for our house. Kids earn minutes by doing chores, earn
+something rarer by doing genuine good for someone else, and work toward prizes
+they cannot see.
 
-## Features
+Built to sit **alongside** Google Family Link, not to replace it.
 
-- **Chore Management**: Create, assign, and track family chores with rewards
-- **Screentime Earning System**: Kids earn device time by completing tasks and responsible actions
-- **Parental Controls**: Real-time monitoring of device activity and app usage
-- **Content Filtering**: Protect kids from inappropriate content
-- **Real-time Updates**: Firebase Realtime Database for instant synchronization
-- **Multi-user Support**: Parent and child accounts with role-based access
+## Read this first
 
-## Tech Stack
+**Google publishes no API for Family Link.** No third-party app can add screen
+time to a Family Link–managed child account or Chromebook, and this one does not
+pretend to. What it does is own the ledger and the incentives, then hand a parent
+one clear instruction — "add 35 minutes for Bella" — with a link to Family Link and
+a confirm button. The minutes leave the ledger only once you confirm you actually
+added them.
 
-### Frontend
-- **React Native** - Cross-platform mobile app (iOS/Android)
-- **Firebase SDK** - Real-time data sync and authentication
+That human step is the honest version. `docs/FAMILY_LINK.md` explains exactly why,
+including why the Chrome Enterprise admin APIs are not the answer either.
 
-### Backend
-- **Python** - FastAPI/Flask for REST API
-- **Firebase Admin SDK** - Server-side database and auth management
-- **Firestore** - Document database for users, chores, and activity logs
+## How the economy works
 
-### Infrastructure
-- **Firebase Realtime Database** - Real-time synchronization
-- **Firebase Authentication** - User management
-- **Firebase Cloud Storage** - Media files (optional)
+Two currencies, deliberately separate:
 
-## Project Structure
+**Minutes** are spendable screen time, earned mostly from chores, and easy to
+grind on purpose.
+
+**Empathy points** are the only thing that moves a hidden prize. They come only
+from good deeds nominated by an adult — a child can never nominate their own, which
+is enforced in the Firestore security rules and not just in the UI. Chores cannot
+buy a prize.
+
+On top of that:
+
+A deed where a kid gave up something real for somebody else issues a **12-hour
+pass**, which is the rarest reward in the system.
+
+Deeds that helped the **primary caregiver** are worth a multiple of anything else,
+configurable per child. If the goal is for the kids to take work off Mom, that is
+where the value sits.
+
+Prizes are **hidden**. A kid's screen shows one of five vague bands — "something is
+stirring", "you're getting close to something big" — and never a number, a
+threshold, a percentage, or a title. There is a test asserting the hint text
+contains no digits, and the prizes collection is parent-only in the rules, so the
+secret never reaches a child's device at all.
+
+Balances are **derived from an append-only ledger**, so every minute can be
+explained line by line on the kid's own screen.
+
+## Two tracks, because two kids
+
+The same machinery runs opposite economies for the two of them, configured in
+`scripts/tracks.mjs`.
+
+**The Momentum track** is for a child whose real problem is starting, not
+willingness. There is deliberately no "clean your room" chore anywhere in it —
+that is a task with no visible first step. Instead there are many one-action jobs
+("wrapper sweep", "bed zone only", "floor: bed to door"), short cooldowns, a
+streak bonus that starts on day two, and prize rungs reachable within days, so the
+system proves itself real before she decides it isn't.
+
+**The Contribution track** is for a child who treats people as means. Cleaning up
+after herself earns **zero** minutes — those chores instead *gate* her ability to
+cash out at all. She banks everything she earns and simply cannot spend it while
+her own mess is on the floor. That removes the leverage rather than paying to
+remove it, which matters: pay a kid for basic decency and you have given it a
+price she can withhold. Every earning chore on her track serves somebody else, and
+her prize ladder runs on empathy, which she cannot self-award.
+
+Consequences work the same way round. A parent can log a refusal or a job done
+badly on purpose, which deducts minutes and can reset that day's streak. It
+cannot touch empathy points, and there is no control for it: those points record
+what a child did for somebody else, and refusing a chore doesn't make that
+untrue. Chores stay out of the prize ladder in both directions, which is what
+stops a kindness ladder turning into an obedience score. Every deduction lands
+as a named line in the child's own ledger with the reason in the parent's words.
+
+`docs/DESIGN.md` gives the reasoning behind every rule, including the failure mode
+each one guards against.
+
+### What this cannot do
+
+It can make exploitation unprofitable and make the alternative visible. It cannot
+make a child speak kindly to their mother. That is not a software problem.
+
+## Stack
+
+A React + TypeScript web app, installable to a phone home screen as a PWA, so it
+works on both kids' phones and the Chromebook with nothing to install and no
+Family Link install approval. Firestore for storage and real-time sync; Firebase
+Auth for sign-in; Firebase Hosting. No server to run, so it works whether or not
+any machine at home is on.
+
+Kids sign in with their name and a 6-digit PIN. They need no email account and no
+Google account.
+
+## Layout
 
 ```
-family-monitor/
-├── frontend/                 # React Native app
-│   ├── src/
-│   │   ├── screens/         # App screens (Parent, Child, Chores, etc.)
-│   │   ├── components/      # Reusable components
-│   │   ├── services/        # Firebase services
-│   │   ├── hooks/           # Custom React hooks
-│   │   ├── context/         # Global state management
-│   │   └── navigation/      # Navigation configuration
-│   ├── app.json             # Expo config
-│   └── package.json
-│
-├── backend/                 # FastAPI/Flask backend
-│   ├── app/
-│   │   ├── main.py          # App entry point
-│   │   ├── api/             # API routes
-│   │   │   ├── auth.py
-│   │   │   ├── chores.py
-│   │   │   ├── users.py
-│   │   │   └── monitoring.py
-│   │   ├── models/          # Data models
-│   │   ├── services/        # Business logic
-│   │   ├── middleware/      # Auth, error handling
-│   │   └── config/          # Configuration
-│   ├── requirements.txt
-│   └── .env.example
-│
-├── docs/                    # Documentation
-├── .env.example             # Environment variables template
-├── .gitignore
-└── README.md
+src/domain/     The economy engine. Pure functions, no Firebase, fully tested.
+                This is where the rules live.
+src/data/       Firestore reads, writes, and the transactions that must be atomic.
+src/state/      Auth and the shared household subscription.
+src/screens/    Kid app (one screen) and parent app (seven tabs).
+firestore.rules The guarantees that actually hold: no self-nominated deeds, no
+                child reading the prize list, no invented minutes.
+src/rules/      45 tests proving those guarantees, against the emulator.
+scripts/tracks.mjs  The two tracks, as data, with the reasoning written down.
+scripts/seed.mjs    Loads them into a household.
+docs/           Setup, the Family Link situation, and the design rationale.
 ```
 
-## Getting Started
+## Getting started
 
-### Prerequisites
-- Node.js & npm (for React Native)
-- Python 3.9+ (for backend)
-- Firebase project setup
-- Expo CLI (for React Native development)
-
-### Backend Setup
+`docs/SETUP.md`. About 30 minutes, most of it waiting on Firebase.
 
 ```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env
-# Configure Firebase credentials in .env
-uvicorn app.main:app --reload
-```
-
-### Frontend Setup
-
-```bash
-cd frontend
 npm install
-# Configure Firebase config in src/config/firebase.js
-npx expo start
+npm test            # 141 tests on the economy engine and seed logic
+npm run test:rules  # 45 tests on the security rules, boots the emulator
+npm run dev
 ```
 
-## API Endpoints
-
-### Auth
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - User login
-- `POST /api/auth/logout` - User logout
-
-### Chores
-- `GET /api/chores` - Get all chores
-- `POST /api/chores` - Create new chore
-- `PUT /api/chores/{id}` - Update chore
-- `POST /api/chores/{id}/complete` - Mark chore as complete
-
-### Users
-- `GET /api/users/{id}` - Get user profile
-- `PUT /api/users/{id}` - Update user profile
-- `GET /api/users/{id}/stats` - Get user statistics
-
-### Monitoring
-- `GET /api/monitoring/{user_id}` - Get activity logs
-- `POST /api/monitoring/{user_id}/block` - Block app/content
-
-## Contributing
-
-1. Create a feature branch
-2. Make your changes
-3. Submit a pull request
+Deploy the security rules **before** creating your household. Firestore in
+production mode denies everything by default, so the first click fails without
+them — and until they are live, the kid-facing guarantees above are cosmetic.
 
 ## License
 
-Private Project - Family Use Only
-
-## Support
-
-For issues or feature requests, open an issue in the repository.
+Private. Family use only.

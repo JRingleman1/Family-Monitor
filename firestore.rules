@@ -1,0 +1,221 @@
+rules_version = '2';
+
+// Security rules for Family Monitor.
+//
+// These are not decoration. Three things in this app are only really guaranteed
+// here, because anything enforced in the UI alone can be bypassed by a kid with
+// a browser console and twenty minutes:
+//
+//   1. A child can never create or approve a deed, so empathy points - the only
+//      currency that moves a hidden prize - cannot be self-awarded.
+//   2. A child can never read the prizes collection, so the titles and the
+//      thresholds stay secret no matter what the client asks for.
+//   3. A child can never write the ledger, the stats cache, a completion's
+//      review fields, or a grant's settlement, so minutes cannot be invented.
+//
+// Everything else follows from those.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Used by the userIndex rules below, which sit outside the household match
+    // and so cannot reach its helpers.
+    function isParentOfHousehold(hid) {
+      return request.auth != null
+             && exists(/databases/$(database)/documents/households/$(hid)/members/$(request.auth.uid))
+             && get(/databases/$(database)/documents/households/$(hid)/members/$(request.auth.uid)).data.role == 'parent';
+    }
+
+    // Maps an auth uid to its household. Readable only by its owner.
+    match /userIndex/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      // Written once during setup by the parent creating the member. A parent
+      // may claim an unwritten index for a member of their own household.
+      allow create: if request.auth != null
+                    && request.resource.data.householdId is string
+                    && isParentOfHousehold(request.resource.data.householdId);
+      allow update, delete: if false;
+    }
+
+    match /households/{hid} {
+
+      function signedIn() {
+        return request.auth != null;
+      }
+
+      function memberDoc() {
+        return get(/databases/$(database)/documents/households/$(hid)/members/$(request.auth.uid));
+      }
+
+      function isMember() {
+        return signedIn()
+               && exists(/databases/$(database)/documents/households/$(hid)/members/$(request.auth.uid));
+      }
+
+      function isParent() {
+        return isMember() && memberDoc().data.role == 'parent';
+      }
+
+      function isChild() {
+        return isMember() && memberDoc().data.role == 'child';
+      }
+
+      function isSelf(childId) {
+        return signedIn() && request.auth.uid == childId;
+      }
+
+      allow read: if isMember();
+      allow write: if isParent();
+
+      // ----------------------------------------------------------- members
+      function householdExists() {
+        return exists(/databases/$(database)/documents/households/$(hid));
+      }
+
+      match /members/{memberId} {
+        allow read: if isMember();
+
+        // A member document defines who you are and what role you hold, so
+        // normally only a parent may write one. A child cannot promote
+        // themselves, and cannot invent a sibling.
+        //
+        // The second clause is the bootstrap: the very first parent of a brand
+        // new household has no member document yet, so isParent() is false for
+        // them and they could never create their own. It is narrow on purpose -
+        // it only opens while the household document does not exist, it only
+        // lets you write your OWN id, and CreateHousehold writes the household
+        // document immediately afterwards, which closes it for good. Nobody can
+        // use it to join a household that already exists.
+        allow create: if isParent()
+                      || (signedIn()
+                          && memberId == request.auth.uid
+                          && request.resource.data.role == 'parent'
+                          && !householdExists());
+
+        allow update, delete: if isParent();
+      }
+
+      // ------------------------------------------------------------ config
+      match /config/{docId} {
+        allow read: if isMember();
+        allow write: if isParent();
+      }
+
+      match /childPolicies/{childId} {
+        // A child may read their own track so the app can show them the right
+        // caps and gates, but never change it.
+        allow read: if isParent() || isSelf(childId);
+        allow write: if isParent();
+      }
+
+      // ------------------------------------------------------------ chores
+      match /chores/{choreId} {
+        allow read: if isMember();
+        allow write: if isParent();
+      }
+
+      // ------------------------------------------------------- completions
+      match /completions/{completionId} {
+        allow read: if isParent() || (isChild() && resource.data.childId == request.auth.uid);
+
+        // A child may claim a chore for themselves, and only as pending with no
+        // award attached. The award is computed at approval, by a parent.
+        allow create: if isParent()
+                      || (isChild()
+                          && request.resource.data.childId == request.auth.uid
+                          && request.resource.data.status == 'pending'
+                          && request.resource.data.claimedAt == request.time
+                          && !('minutesAwarded' in request.resource.data)
+                          && !('reviewedBy' in request.resource.data)
+                          && !('reviewedAt' in request.resource.data));
+
+        // Review is a parent action, full stop.
+        allow update, delete: if isParent();
+      }
+
+      // ------------------------------------------------------------- deeds
+      match /deeds/{deedId} {
+        allow read: if isParent() || (isChild() && resource.data.childId == request.auth.uid);
+
+        // Only an adult nominates a deed. This is the single most important
+        // rule in the file: it is what stops a child claiming their own
+        // kindness and grinding a hidden prize.
+        allow create: if isParent()
+                      && request.resource.data.nominatedBy == request.auth.uid
+                      && request.resource.data.status == 'pending';
+
+        allow update, delete: if isParent();
+      }
+
+      // ------------------------------------------------------------ passes
+      match /passes/{passId} {
+        allow read: if isParent() || (isChild() && resource.data.childId == request.auth.uid);
+        // A pass is issued and spent by a parent. A child asking to use one is a
+        // conversation, not a write.
+        allow write: if isParent();
+      }
+
+      // ------------------------------------------------------- infractions
+      match /infractions/{infractionId} {
+        // A child sees their own, which is the point - a consequence they
+        // cannot read is a consequence they will experience as arbitrary.
+        allow read: if isParent() || (isChild() && resource.data.childId == request.auth.uid);
+        // Only a parent logs or undoes one. A child cannot erase a refusal to
+        // restore their own streak.
+        allow write: if isParent();
+      }
+
+      // ------------------------------------------------------------ ledger
+      match /ledger/{entryId} {
+        allow read: if isParent() || (isChild() && resource.data.childId == request.auth.uid);
+        // Append-only, parents only. Nobody edits history, including us.
+        allow create: if isParent();
+        allow update, delete: if false;
+      }
+
+      // ------------------------------------------------------------ grants
+      match /grants/{grantId} {
+        allow read: if isParent() || (isChild() && resource.data.childId == request.auth.uid);
+
+        // A child may ask to cash minutes out, as a plain request and nothing
+        // more. Whether the request is payable is re-checked by the parent's
+        // settle transaction; a child cannot mark their own request granted.
+        allow create: if isParent()
+                      || (isChild()
+                          && request.resource.data.childId == request.auth.uid
+                          && request.resource.data.requestedBy == request.auth.uid
+                          && request.resource.data.status == 'requested'
+                          && request.resource.data.minutes is int
+                          && request.resource.data.minutes > 0);
+
+        allow update, delete: if isParent();
+      }
+
+      // ------------------------------------------------------------ prizes
+      match /prizes/{prizeId} {
+        // Parents only, for reads as well as writes. A child device never
+        // receives a prize title or a threshold, so the hint it shows stays
+        // vague however hard the client is poked.
+        allow read, write: if isParent();
+      }
+
+      match /prizeUnlocks/{unlockId} {
+        // A child may see that they have unlocked something - which is what
+        // turns the hint into "go find a parent" - but the prize it points at
+        // stays out of reach until an adult reveals it.
+        allow read: if isParent() || (isChild() && resource.data.childId == request.auth.uid);
+        allow write: if isParent();
+      }
+
+      // ------------------------------------------------------- stats cache
+      match /stats/{childId} {
+        allow read: if isParent() || isSelf(childId);
+        // Derived from the ledger. Only a parent's approval transaction writes
+        // it, and it can always be rebuilt from the ledger if it drifts.
+        allow write: if isParent();
+      }
+    }
+
+    // Anything not matched above is denied.
+  }
+}

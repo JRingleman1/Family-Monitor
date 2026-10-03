@@ -97,6 +97,7 @@ src/state/      Auth and the shared household subscription.
 src/screens/    Kid app (one screen) and parent app (seven tabs).
 firestore.rules The guarantees that actually hold: no self-nominated deeds, no
                 child reading the prize list, no invented minutes.
+src/rules/      40 tests proving those guarantees, against the emulator.
 scripts/tracks.mjs  The two tracks, as data, with the reasoning written down.
 scripts/seed.mjs    Loads them into a household.
 docs/           Setup, the Family Link situation, and the design rationale.
@@ -108,9 +109,14 @@ docs/           Setup, the Family Link situation, and the design rationale.
 
 ```bash
 npm install
-npm test          # 114 tests on the economy engine, no emulator needed
+npm test            # 114 tests on the economy engine, no emulator needed
+npm run test:rules  # 40 tests on the security rules, boots the emulator
 npm run dev
 ```
+
+Deploy the security rules **before** creating your household. Firestore in
+production mode denies everything by default, so the first click fails without
+them — and until they are live, the kid-facing guarantees above are cosmetic.
 
 ## License
 

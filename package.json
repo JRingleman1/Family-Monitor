@@ -13,14 +13,16 @@
     "typecheck": "tsc --noEmit",
     "emulators": "firebase emulators:start --only auth,firestore",
     "seed": "node scripts/seed.mjs",
-    "deploy": "npm run build && firebase deploy"
+    "deploy": "npm run build && firebase deploy",
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run --config vitest.rules.config.ts\""
   },
   "dependencies": {
-    "firebase": "^11.0.2",
+    "firebase": "^12.19.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^5.0.4",

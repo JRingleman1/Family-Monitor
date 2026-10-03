@@ -68,11 +68,31 @@ service cloud.firestore {
       allow write: if isParent();
 
       // ----------------------------------------------------------- members
+      function householdExists() {
+        return exists(/databases/$(database)/documents/households/$(hid));
+      }
+
       match /members/{memberId} {
         allow read: if isMember();
-        // A member document defines who you are and what role you hold, so only
-        // a parent may write one. A child cannot promote themselves.
-        allow create, update, delete: if isParent();
+
+        // A member document defines who you are and what role you hold, so
+        // normally only a parent may write one. A child cannot promote
+        // themselves, and cannot invent a sibling.
+        //
+        // The second clause is the bootstrap: the very first parent of a brand
+        // new household has no member document yet, so isParent() is false for
+        // them and they could never create their own. It is narrow on purpose -
+        // it only opens while the household document does not exist, it only
+        // lets you write your OWN id, and CreateHousehold writes the household
+        // document immediately afterwards, which closes it for good. Nobody can
+        // use it to join a household that already exists.
+        allow create: if isParent()
+                      || (signedIn()
+                          && memberId == request.auth.uid
+                          && request.resource.data.role == 'parent'
+                          && !householdExists());
+
+        allow update, delete: if isParent();
       }
 
       // ------------------------------------------------------------ config

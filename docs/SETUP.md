@@ -26,12 +26,46 @@ npm run dev
 
 The Firebase web config is public by design — it identifies the project, it does
 not authorise anything. Your data is protected by `firestore.rules`, which is why
-step 4 is not optional.
+step 3 is not optional.
 
-## 3. Create the household
+## 3. Deploy the security rules
 
-Open the app, choose **Set up a new family**, and create your parent account. Note
-the **family code** it shows you — kids type it once per device.
+**Do this before creating your household, not after.** Firestore in production
+mode ships with rules that deny every read and write, so the app cannot save
+anything until the rules in this repo replace them. Getting this order wrong
+means your first click fails with "Missing or insufficient permissions".
+
+This is also the step that makes the kid-facing guarantees real rather than
+cosmetic. Until these rules are live, nothing stops a child from reading the
+hidden prize list or writing their own ledger entries.
+
+```bash
+npm install -g firebase-tools
+firebase login
+firebase use --add          # pick the project from step 1
+firebase deploy --only firestore:rules,firestore:indexes
+```
+
+Do **not** run `firebase init`. The repo already has `firebase.json`,
+`firestore.rules` and `firestore.indexes.json`, and `firebase init` offers to
+overwrite them with defaults that either block everything or allow everything.
+
+You can check the rules before trusting them with your family's data:
+
+```bash
+npm run test:rules
+```
+
+That boots the Firestore emulator and runs 40 tests against the real rules file,
+covering every promise the app makes: a child cannot nominate their own good
+deed, cannot read a prize title or threshold, cannot write the ledger, cannot
+approve their own chore, cannot turn off their own cashout gate, and cannot read
+a sibling's anything. If one of those fails, a claim made to your kids is false.
+
+## 4. Create the household
+
+Open the app, choose **Set up a new family**, and create your parent account.
+Note the **family code** it shows you — kids type it once per device.
 
 Then on the **Family** tab, add:
 
@@ -41,20 +75,6 @@ Then on the **Family** tab, add:
 
 On the **Settings** tab, set the **primary caregiver**. Until you do, the empathy
 multiplier never applies to anything.
-
-## 4. Deploy the security rules
-
-This is the step that makes the kid-facing guarantees real rather than cosmetic.
-
-```bash
-npm install -g firebase-tools
-firebase login
-firebase use --add          # pick the project from step 1
-firebase deploy --only firestore:rules,firestore:indexes
-```
-
-Without this, the default rules either block everything or expose everything, and
-a child could read the hidden prize list.
 
 ## 5. Load the two tracks
 
@@ -105,11 +125,35 @@ npm run dev            # in another
 ## Checks
 
 ```bash
-npm test               # domain engine, 114 tests
+npm test               # domain engine, 114 tests, no emulator needed
+npm run test:rules     # security rules, 40 tests, boots the emulator
 npm run typecheck
 npm run build
 ```
 
-The domain engine in `src/domain/` has no Firebase in it, which is why the tests
-run in under a second and need no emulator. That is where the rules of the economy
-live, and it is the code most worth keeping honest.
+The domain engine in `src/domain/` has no Firebase in it, which is why those
+tests run in under a second. That is where the rules of the economy live, and it
+is the code most worth keeping honest.
+
+The rules tests in `src/rules/` are the other half: the economy engine decides
+what *should* happen, and the rules decide what a determined 11-year-old with a
+browser console *can* make happen.
+
+## About `npm audit`
+
+A fresh install reports a handful of advisories. As of the last check they break
+down like this, and neither group reaches the app your kids load:
+
+Two moderate advisories in `@vitest/mocker`, which is the test runner's mocking
+layer. It runs only when you run tests.
+
+Several high advisories tracing to `@grpc/grpc-js`, which the Firebase SDK pins
+at a version with no patched release available yet. gRPC is the SDK's **Node**
+transport; in a browser Firestore uses WebChannel instead, and the gRPC code is
+tree-shaken out of the production bundle. This was verified rather than assumed
+— the built bundle contains none of the library's markers. The only place it
+actually executes is `scripts/seed.mjs`, which you run once, locally, against
+your own project.
+
+Do **not** run `npm audit fix --force`. It will upgrade majors and break the
+build to fix something that is not in your app.

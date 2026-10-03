@@ -119,3 +119,44 @@ export function manualEntry(params: {
     createdBy: author.id,
   };
 }
+
+/**
+ * A logged consequence.
+ *
+ * Note what is absent: deltaEmpathy is hard-coded to zero and takes no input.
+ * An infraction can cost minutes and can break a streak, but it can never
+ * reduce empathy, because empathy records what a child did for another person
+ * and a chore refusal does not make that untrue.
+ */
+export function infractionEntry(params: {
+  childId: string;
+  infractionId: string;
+  minutes: number;
+  description: string;
+  kindLabel: string;
+  breaksStreak: boolean;
+  recordedBy: string;
+  now: number;
+}): NewLedgerEntry {
+  const { childId, infractionId, minutes, description, kindLabel, breaksStreak, recordedBy, now } =
+    params;
+
+  const parts = [`${kindLabel}: ${description}`];
+  if (breaksStreak) parts.push('streak reset');
+
+  const magnitude = Math.abs(minutes);
+
+  return {
+    childId,
+    // Normalised so a zero-cost warning stores 0 rather than -0, which is what
+    // a bare -Math.abs(0) yields and which has no business in a ledger.
+    deltaMinutes: magnitude === 0 ? 0 : -magnitude,
+    // Never negative, never configurable. See the doc comment above.
+    deltaEmpathy: 0,
+    source: 'correction',
+    sourceId: infractionId,
+    note: parts.join(' - '),
+    createdAt: now,
+    createdBy: recordedBy,
+  };
+}

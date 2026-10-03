@@ -11,9 +11,18 @@ import ManageChores from './ManageChores';
 import ManageMembers from './ManageMembers';
 import ManagePrizes from './ManagePrizes';
 import NominateDeed from './NominateDeed';
+import Consequences from './Consequences';
 import Settings from './Settings';
 
-type Tab = 'queue' | 'deeds' | 'grant' | 'prizes' | 'chores' | 'family' | 'settings';
+type Tab =
+  | 'queue'
+  | 'deeds'
+  | 'grant'
+  | 'prizes'
+  | 'chores'
+  | 'consequences'
+  | 'family'
+  | 'settings';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'queue', label: 'Queue' },
@@ -21,13 +30,15 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'grant', label: 'Screen time' },
   { key: 'prizes', label: 'Prizes' },
   { key: 'chores', label: 'Chores' },
+  { key: 'consequences', label: 'Consequences' },
   { key: 'family', label: 'Family' },
   { key: 'settings', label: 'Settings' },
 ];
 
 export default function ParentHome() {
   const { member, householdId, signOut } = useAuth();
-  const { children, chores, completions, deeds, grants, settings, balanceFor } = useHousehold();
+  const { children, chores, completions, deeds, grants, infractions, settings, balanceFor } =
+    useHousehold();
   const { policyFor } = useChildPolicies();
   const [tab, setTab] = useState<Tab>('queue');
 
@@ -52,11 +63,11 @@ export default function ParentHome() {
         child,
         policy,
         balance: balanceFor(child.id),
-        streak: currentStreakDays({ completions, childId: child.id, now }),
+        streak: currentStreakDays({ completions, infractions, childId: child.id, now }),
         baseline: baselineStatus({ chores, completions, childId: child.id, now }),
       };
     });
-  }, [children, settings, policyFor, balanceFor, completions, chores]);
+  }, [children, settings, policyFor, balanceFor, completions, chores, infractions]);
 
   if (!member) return null;
 
@@ -124,6 +135,7 @@ export default function ParentHome() {
       {tab === 'grant' && <GrantScreenTime />}
       {tab === 'prizes' && <ManagePrizes />}
       {tab === 'chores' && <ManageChores />}
+      {tab === 'consequences' && <Consequences />}
       {tab === 'family' && <ManageMembers />}
       {tab === 'settings' && <Settings />}
 

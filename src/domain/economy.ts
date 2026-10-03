@@ -13,6 +13,7 @@ import type {
   Deed,
   EffectivePolicy,
   HouseholdSettings,
+  Infraction,
   LedgerEntry,
 } from './types';
 
@@ -192,10 +193,11 @@ export function awardForChoreApproval(params: {
   childId: string;
   ledger: LedgerEntry[];
   completions: Completion[];
+  infractions?: Infraction[];
   policy: EffectivePolicy;
   now: number;
 }): ChoreAward {
-  const { chore, childId, ledger, completions, policy, now } = params;
+  const { chore, childId, ledger, completions, infractions, policy, now } = params;
 
   if (chore.isBaseline) {
     return { minutes: 0, capped: false, streakBonus: 0, streakDays: 0, baseline: true };
@@ -204,6 +206,7 @@ export function awardForChoreApproval(params: {
   const { minutes: streakBonus, streakDays } = streakBonusFor({
     policy,
     completions,
+    infractions,
     now,
   });
 
@@ -375,15 +378,20 @@ export function baselineStatus(params: {
 
 /**
  * Consecutive calendar days, counting back from today, on which this child had
- * at least one chore claim approved. Today counts only if something has been
- * approved today, so the number never flatters them.
+ * at least one chore claim approved AND no logged refusal.
+ *
+ * Today counts only if something has been approved today, so the number never
+ * flatters them. A refusal logged on a day stops the run there even if a token
+ * job was approved the same day - which is the gap a bare "did anything get
+ * approved" check leaves open, and exactly the one a kid finds first.
  */
 export function currentStreakDays(params: {
   completions: Completion[];
+  infractions?: Infraction[];
   childId: string;
   now: number;
 }): number {
-  const { completions, childId, now } = params;
+  const { completions, infractions = [], childId, now } = params;
 
   const days = new Set<number>();
   for (const c of completions) {
@@ -391,9 +399,15 @@ export function currentStreakDays(params: {
     days.add(localDayRange(c.reviewedAt ?? c.claimedAt).start);
   }
 
+  const broken = new Set<number>();
+  for (const i of infractions) {
+    if (i.childId !== childId || !i.breaksStreak) continue;
+    broken.add(localDayRange(i.dayKey).start);
+  }
+
   let streak = 0;
   let cursor = localDayRange(now).start;
-  while (days.has(cursor)) {
+  while (days.has(cursor) && !broken.has(cursor)) {
     streak += 1;
     // Step back a day through a real Date so DST shifts cannot break the walk.
     const prev = new Date(cursor);
@@ -457,9 +471,10 @@ export function evaluateCashout(params: {
 export function streakBonusFor(params: {
   policy: EffectivePolicy;
   completions: Completion[];
+  infractions?: Infraction[];
   now: number;
 }): { minutes: number; streakDays: number } {
-  const { policy, completions, now } = params;
+  const { policy, completions, infractions, now } = params;
 
   if (policy.streakBonusMinutes <= 0 || policy.streakBonusAfterDays <= 0) {
     return { minutes: 0, streakDays: 0 };
@@ -467,6 +482,7 @@ export function streakBonusFor(params: {
 
   const streakDays = currentStreakDays({
     completions,
+    infractions,
     childId: policy.childId,
     now,
   });

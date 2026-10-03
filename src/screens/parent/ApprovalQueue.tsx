@@ -25,8 +25,17 @@ import type { Prize } from '../../domain/types';
  */
 export default function ApprovalQueue() {
   const { member, householdId } = useAuth();
-  const { chores, completions, deeds, ledger, settings, caregiver, memberName, members } =
-    useHousehold();
+  const {
+    chores,
+    completions,
+    deeds,
+    infractions,
+    ledger,
+    settings,
+    caregiver,
+    memberName,
+    members,
+  } = useHousehold();
   const { policyFor } = useChildPolicies();
 
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +67,7 @@ export default function ApprovalQueue() {
         chore,
         ledger,
         completions,
+        infractions,
         policy: policyFo(completion.childId),
         approverId: member.id,
       });
@@ -104,6 +114,7 @@ export default function ApprovalQueue() {
         caregiverName: caregiver?.displayName,
         streakDays: currentStreakDays({
           completions,
+          infractions,
           childId: deed.childId,
           now: Date.now(),
         }),

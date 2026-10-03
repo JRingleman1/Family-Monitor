@@ -46,6 +46,7 @@ export default function KidHome() {
     ledger,
     passes,
     grants,
+    infractions,
     settings,
     balanceFor,
   } = useHousehold();
@@ -65,7 +66,7 @@ export default function KidHome() {
   );
 
   const balance = balanceFor(childId);
-  const streak = currentStreakDays({ completions, childId, now });
+  const streak = currentStreakDays({ completions, infractions, childId, now });
   const baseline = baselineStatus({ chores, completions, childId, now });
 
   // Prize titles and thresholds never reach this device - the rules refuse a

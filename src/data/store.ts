@@ -33,6 +33,7 @@ import {
   toLedgerEntry,
   toMember,
   toChildPolicy,
+  toInfraction,
   toPass,
   toPrize,
   toPrizeUnlock,
@@ -46,17 +47,27 @@ import {
   currentStreakDays,
   evaluateCashout,
   evaluateChoreClaim,
+  localDayRange,
   isPassUsable,
   passExpiryFrom,
 } from '../domain/economy';
-import { choreEntry, deedEntry, grantEntry, manualEntry } from '../domain/entries';
+import {
+  choreEntry,
+  deedEntry,
+  grantEntry,
+  infractionEntry,
+  manualEntry,
+} from '../domain/entries';
 import type { NewLedgerEntry } from '../domain/entries';
 import { childHint, prizesUnlockedAt, unlockId } from '../domain/prizes';
 import type { HintBand } from '../domain/prizes';
+import { INFRACTION_LABEL } from '../domain/types';
 import type {
   Balance,
   ChildMetrics,
   ChildPolicy,
+  Infraction,
+  InfractionKind,
   Chore,
   EffectivePolicy,
   Completion,
@@ -244,6 +255,7 @@ export async function approveCompletion(params: {
   chore: Chore;
   ledger: LedgerEntry[];
   completions: Completion[];
+  infractions?: Infraction[];
   policy: EffectivePolicy;
   approverId: string;
 }): Promise<Prize[]> {
@@ -257,6 +269,7 @@ export async function approveCompletion(params: {
     childId: completion.childId,
     ledger,
     completions,
+    infractions: params.infractions,
     policy,
     now,
   });
@@ -317,6 +330,7 @@ export async function approveCompletion(params: {
       ...completions.filter((c) => c.id !== completion.id),
       { ...completion, status: 'approved', reviewedAt: now },
     ],
+    infractions: params.infractions,
     childId: completion.childId,
     now,
   });
@@ -805,14 +819,15 @@ export function metricsFor(params: {
   childId: string;
   ledger: LedgerEntry[];
   completions: Completion[];
+  infractions?: Infraction[];
   now?: number;
 }): ChildMetrics {
-  const { childId, ledger, completions, now = Date.now() } = params;
+  const { childId, ledger, completions, infractions, now = Date.now() } = params;
   const balance = computeBalance(childId, ledger);
   return {
     empathy: balance.empathyPoints,
     lifetimeMinutes: balance.lifetimeMinutes,
-    streakDays: currentStreakDays({ completions, childId, now }),
+    streakDays: currentStreakDays({ completions, infractions, childId, now }),
   };
 }
 
@@ -946,4 +961,153 @@ export async function refreshHintBand(params: {
 
   await setDoc(paths.stat(db, householdId, childId), { hintBand: band }, { merge: true });
   return band;
+}
+
+export function watchInfractions(
+  hid: string,
+  childId: string | null,
+  cb: (infractions: Infraction[]) => void,
+): Unsubscribe {
+  const base = paths.infractions(getDb(), hid);
+  const q = childId ? query(base, where('childId', '==', childId)) : base;
+  return onSnapshot(q, (snap) => {
+    const rows = snap.docs.map((d) => toInfraction(d.data(), d.id));
+    rows.sort((a, b) => b.createdAt - a.createdAt);
+    cb(rows);
+  });
+}
+
+/**
+ * Log a refusal or a job deliberately done badly.
+ *
+ * Writes the infraction and, when it costs minutes, the ledger line explaining
+ * it, in one transaction. The child reads that line on their own screen - a
+ * balance that drops with no stated reason is how a kid learns the system is
+ * arbitrary, and an arbitrary system gets worked around rather than obeyed.
+ *
+ * Empathy is untouched by design. See the Infraction type for why.
+ */
+export async function recordInfraction(params: {
+  householdId: string;
+  childId: string;
+  kind: InfractionKind;
+  description: string;
+  minutesDeducted: number;
+  breaksStreak: boolean;
+  recordedBy: string;
+  /** Defaults to today. Pass a past day to log something after the fact. */
+  dayKey?: number;
+}): Promise<void> {
+  const {
+    householdId,
+    childId,
+    kind,
+    description,
+    minutesDeducted,
+    breaksStreak,
+    recordedBy,
+  } = params;
+
+  if (!description.trim()) {
+    throw new DomainError('Say what happened. The child reads this.', 'empty-description');
+  }
+  if (minutesDeducted < 0) {
+    throw new DomainError('Enter the minutes to remove as a positive number.', 'negative');
+  }
+
+  const db = getDb();
+  const now = Date.now();
+  const dayKey = params.dayKey ?? localDayRange(now).start;
+  const infractionRef = doc(paths.infractions(db, householdId));
+
+  const entry = infractionEntry({
+    childId,
+    infractionId: infractionRef.id,
+    minutes: minutesDeducted,
+    description: description.trim(),
+    kindLabel: INFRACTION_LABEL[kind],
+    breaksStreak,
+    recordedBy,
+    now,
+  });
+
+  await runTransaction(db, async (tx) => {
+    const statRef = paths.stat(db, householdId, childId);
+    const statSnap = await tx.get(statRef);
+    const available = Number(statSnap.data()?.availableMinutes ?? 0);
+
+    tx.set(infractionRef, {
+      childId,
+      kind,
+      description: description.trim(),
+      minutesDeducted,
+      breaksStreak,
+      dayKey,
+      recordedBy,
+      createdAt: serverTimestamp(),
+    });
+
+    // Always write the ledger line, even for a zero-minute warning, so the
+    // child sees the reason rather than just feeling the consequence.
+    tx.set(doc(paths.ledger(db, householdId)), { ...entry, createdAt: serverTimestamp() });
+
+    tx.set(
+      statRef,
+      {
+        childId,
+        // Clamped: a deduction larger than the balance takes it to zero rather
+        // than leaving a kid in debt, which would make earning feel pointless.
+        availableMinutes: Math.max(0, available + entry.deltaMinutes),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  });
+}
+
+/** Undo a logged consequence. Appends a reversal; it never edits history. */
+export async function reverseInfraction(params: {
+  householdId: string;
+  infraction: Infraction;
+  reversedBy: string;
+}): Promise<void> {
+  const { householdId, infraction, reversedBy } = params;
+  const db = getDb();
+
+  await runTransaction(db, async (tx) => {
+    const ref = paths.infraction(db, householdId, infraction.id);
+    const fresh = await tx.get(ref);
+    if (!fresh.exists()) throw new DomainError('That entry no longer exists.', 'missing');
+    if (fresh.data().reversedAt) {
+      throw new DomainError('That was already undone.', 'already-reversed');
+    }
+
+    const statRef = paths.stat(db, householdId, infraction.childId);
+    const statSnap = await tx.get(statRef);
+    const available = Number(statSnap.data()?.availableMinutes ?? 0);
+
+    // Setting breaksStreak false is what restores the streak, since the streak
+    // is derived rather than stored.
+    tx.update(ref, { reversedAt: serverTimestamp(), reversedBy, breaksStreak: false });
+
+    tx.set(doc(paths.ledger(db, householdId)), {
+      childId: infraction.childId,
+      deltaMinutes: infraction.minutesDeducted,
+      deltaEmpathy: 0,
+      source: 'correction',
+      sourceId: infraction.id,
+      note: `Undone: ${infraction.description}`,
+      createdAt: serverTimestamp(),
+      createdBy: reversedBy,
+    });
+
+    tx.set(
+      statRef,
+      {
+        availableMinutes: available + infraction.minutesDeducted,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  });
 }

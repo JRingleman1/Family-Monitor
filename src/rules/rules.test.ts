@@ -554,3 +554,83 @@ describe('siblings and outsiders', () => {
     await assertSucceeds(setDoc(doc(db, 'userIndex', 'newkid'), { householdId: HID }));
   });
 });
+
+describe('consequences', () => {
+  it('lets a parent log a refusal', async () => {
+    const db = asDad();
+    await assertSucceeds(
+      setDoc(doc(db, 'households', HID, 'infractions', 'inf1'), {
+        childId: KID,
+        kind: 'refusal',
+        description: 'Refused to clear her floor',
+        minutesDeducted: 20,
+        breaksStreak: true,
+        dayKey: Date.now(),
+        recordedBy: DAD,
+      }),
+    );
+  });
+
+  it('lets a child read their own logged consequence', async () => {
+    // A consequence a kid cannot read is a consequence they experience as
+    // arbitrary, which is how the whole system loses credibility.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'households', HID, 'infractions', 'inf2'), {
+        childId: KID,
+        kind: 'refusal',
+        description: 'Refused',
+        minutesDeducted: 20,
+        breaksStreak: true,
+        recordedBy: DAD,
+      });
+    });
+    const db = asKid();
+    await assertSucceeds(getDoc(doc(db, 'households', HID, 'infractions', 'inf2')));
+  });
+
+  it('refuses a child deleting a refusal to restore their own streak', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'households', HID, 'infractions', 'inf3'), {
+        childId: KID,
+        kind: 'refusal',
+        description: 'Refused',
+        minutesDeducted: 20,
+        breaksStreak: true,
+        recordedBy: DAD,
+      });
+    });
+    const db = asKid();
+    await assertFails(
+      updateDoc(doc(db, 'households', HID, 'infractions', 'inf3'), { breaksStreak: false }),
+    );
+  });
+
+  it('refuses a child logging a consequence against a sibling', async () => {
+    const db = asKid();
+    await assertFails(
+      setDoc(doc(db, 'households', HID, 'infractions', 'inf4'), {
+        childId: SIB,
+        kind: 'refusal',
+        description: 'She was mean to me',
+        minutesDeducted: 60,
+        breaksStreak: true,
+        recordedBy: KID,
+      }),
+    );
+  });
+
+  it('refuses a child reading a sibling’s consequence', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'households', HID, 'infractions', 'inf5'), {
+        childId: SIB,
+        kind: 'refusal',
+        description: 'Sib refused',
+        minutesDeducted: 20,
+        breaksStreak: true,
+        recordedBy: DAD,
+      });
+    });
+    const db = asKid();
+    await assertFails(getDoc(doc(db, 'households', HID, 'infractions', 'inf5')));
+  });
+});

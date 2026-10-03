@@ -6,6 +6,7 @@ import type {
   Deed,
   EffectivePolicy,
   HouseholdSettings,
+  Infraction,
   LedgerEntry,
   Prize,
   PrizeUnlock,
@@ -127,4 +128,19 @@ export function prizeUnlock(over: Partial<PrizeUnlock> = {}): PrizeUnlock {
 
 export function metrics(over: Partial<ChildMetrics> = {}): ChildMetrics {
   return { empathy: 0, streakDays: 0, lifetimeMinutes: 0, ...over };
+}
+
+export function infraction(over: Partial<Infraction> = {}): Infraction {
+  return {
+    id: id('infraction'),
+    childId: 'kid-a',
+    kind: 'refusal',
+    description: 'Refused to clear her floor',
+    minutesDeducted: 20,
+    breaksStreak: true,
+    dayKey: DAY,
+    recordedBy: 'dad',
+    createdAt: DAY,
+    ...over,
+  };
 }

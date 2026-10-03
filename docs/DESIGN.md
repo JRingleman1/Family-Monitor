@@ -111,6 +111,40 @@ The nominator of a deed is not the one who confirms it. `allowSelfConfirm` exist
 because one parent is often alone with the kids and a real deed should not go
 unrewarded for that, but it is off by default.
 
+## Consequences can take minutes and streaks, never empathy
+
+A logged consequence - a refusal, or a job deliberately done badly - can deduct
+minutes and can break that day's streak. It cannot touch empathy points, and
+there is no control for it anywhere in the UI.
+
+The reasoning: empathy points record things a child actually did for another
+person, nominated by an adult. If refusing to vacuum could reduce them, empathy
+would stop meaning "you looked out for someone" and start meaning "you
+complied", and the two currencies would collapse into one. Chores must not
+reach the prize ladder in either direction - that symmetry is what keeps a
+kindness ladder from quietly becoming an obedience score. `infractionEntry()`
+hard-codes `deltaEmpathy: 0` and takes no parameter for it, and there is a test
+asserting it stays zero for every combination of inputs.
+
+Breaking a streak is a different matter, and defensible. A streak asserts the
+child showed up every day. If they refused today, they didn't, so resetting it
+is accuracy rather than an added punishment. Note that a streak already breaks
+on its own when a day passes with nothing approved - the gap this closes is the
+day a kid does one token job and stonewalls everything else.
+
+Two further rules:
+
+- A deduction larger than the balance clamps to zero rather than leaving a kid
+  in debt. Owing minutes would make earning feel pointless, which is the
+  opposite of what any of this is for.
+- The reason is required, and the child reads it on their own screen. A balance
+  that drops with no stated cause teaches a kid the system is arbitrary, and an
+  arbitrary system gets worked around rather than respected.
+
+Undo appends a reversal rather than editing anything, in keeping with the
+append-only ledger. Setting `breaksStreak` back to false restores the streak,
+because the streak is derived rather than stored.
+
 ## What none of this can do
 
 The app can make exploitation unprofitable and make the alternative visible. It

@@ -155,6 +155,16 @@ service cloud.firestore {
         allow write: if isParent();
       }
 
+      // ------------------------------------------------------- infractions
+      match /infractions/{infractionId} {
+        // A child sees their own, which is the point - a consequence they
+        // cannot read is a consequence they will experience as arbitrary.
+        allow read: if isParent() || (isChild() && resource.data.childId == request.auth.uid);
+        // Only a parent logs or undoes one. A child cannot erase a refusal to
+        // restore their own streak.
+        allow write: if isParent();
+      }
+
       // ------------------------------------------------------------ ledger
       match /ledger/{entryId} {
         allow read: if isParent() || (isChild() && resource.data.childId == request.auth.uid);

@@ -298,3 +298,41 @@ export interface ChildMetrics {
   streakDays: number;
   lifetimeMinutes: number;
 }
+
+/**
+ * A logged consequence: a refusal, or a job deliberately done badly.
+ *
+ * Deliberately narrow in what it can take. It can deduct minutes, which the
+ * child earned for herself, and it can break a streak, which is a claim about
+ * showing up that a refusal makes untrue. It CANNOT touch empathy points.
+ *
+ * That last restriction is the point. Empathy is a record of things a child
+ * actually did for another person, nominated by an adult. If refusing to
+ * vacuum could reduce it, empathy would stop meaning "you looked out for
+ * someone" and start meaning "you complied", and the two currencies would
+ * collapse into one. Chores must not reach the prize ladder in either
+ * direction. There is a test asserting an infraction never carries empathy.
+ */
+export type InfractionKind = 'refusal' | 'done-badly' | 'other';
+
+export interface Infraction {
+  id: string;
+  childId: string;
+  kind: InfractionKind;
+  /** What happened, in the parent's words. The child reads this. */
+  description: string;
+  /** Minutes removed. Zero is allowed: a logged warning that costs nothing. */
+  minutesDeducted: number;
+  /** Whether this stops the daily streak on its day. */
+  breaksStreak: boolean;
+  /** Local-day start this applies to. */
+  dayKey: number;
+  recordedBy: string;
+  createdAt: number;
+}
+
+export const INFRACTION_LABEL: Record<InfractionKind, string> = {
+  refusal: 'Refused when asked',
+  'done-badly': 'Done badly on purpose',
+  other: 'Other',
+};

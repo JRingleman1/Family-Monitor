@@ -56,7 +56,7 @@ You can check the rules before trusting them with your family's data:
 npm run test:rules
 ```
 
-That boots the Firestore emulator and runs 40 tests against the real rules file,
+That boots the Firestore emulator and runs 45 tests against the real rules file,
 covering every promise the app makes: a child cannot nominate their own good
 deed, cannot read a prize title or threshold, cannot write the ledger, cannot
 approve their own chore, cannot turn off their own cashout gate, and cannot read
@@ -125,8 +125,8 @@ npm run dev            # in another
 ## Checks
 
 ```bash
-npm test               # domain engine, 114 tests, no emulator needed
-npm run test:rules     # security rules, 40 tests, boots the emulator
+npm test               # domain engine, 126 tests, no emulator needed
+npm run test:rules     # security rules, 45 tests, boots the emulator
 npm run typecheck
 npm run build
 ```

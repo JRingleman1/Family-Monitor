@@ -4,6 +4,8 @@ import { DEFAULT_SETTINGS } from '../domain/types';
 import type {
   ChildPolicy,
   Chore,
+  Infraction,
+  InfractionKind,
   Completion,
   Deed,
   Grant,
@@ -188,5 +190,21 @@ export function toChildPolicy(d: DocumentData, id: string): ChildPolicy {
     deedEmpathyPoints: optNum(d.deedEmpathyPoints),
     sacrificeEmpathyPoints: optNum(d.sacrificeEmpathyPoints),
     deedMinutes: optNum(d.deedMinutes),
+  };
+}
+
+export function toInfraction(d: DocumentData, id: string): Infraction {
+  const kind: InfractionKind =
+    d.kind === 'refusal' || d.kind === 'done-badly' ? d.kind : 'other';
+  return {
+    id,
+    childId: str(d.childId),
+    kind,
+    description: str(d.description),
+    minutesDeducted: num(d.minutesDeducted),
+    breaksStreak: bool(d.breaksStreak),
+    dayKey: toMillis(d.dayKey),
+    recordedBy: str(d.recordedBy),
+    createdAt: toMillis(d.createdAt),
   };
 }

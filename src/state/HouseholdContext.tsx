@@ -18,6 +18,7 @@ import {
   watchCompletions,
   watchDeeds,
   watchGrants,
+  watchInfractions,
   watchLedger,
   watchMembers,
   watchPasses,
@@ -34,6 +35,7 @@ import type {
   Deed,
   Grant,
   HouseholdSettings,
+  Infraction,
   LedgerEntry,
   Member,
   Pass,
@@ -53,6 +55,7 @@ interface HouseholdState {
   passes: Pass[];
   ledger: LedgerEntry[];
   grants: Grant[];
+  infractions: Infraction[];
   /** Empty for a child: the rules deny them any read here. */
   prizes: Prize[];
   prizeUnlocks: PrizeUnlock[];
@@ -74,6 +77,7 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
   const [passes, setPasses] = useState<Pass[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
+  const [infractions, setInfractions] = useState<Infraction[]>([]);
   const [prizes, setPrizes] = useState<Prize[]>([]);
   const [prizeUnlocks, setPrizeUnlocks] = useState<PrizeUnlock[]>([]);
   const [settings, setSettings] = useState<HouseholdSettings>(DEFAULT_SETTINGS);
@@ -93,6 +97,7 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
       watchPasses(householdId, scope, setPasses),
       watchLedger(householdId, scope, setLedger),
       watchGrants(householdId, scope, setGrants),
+      watchInfractions(householdId, scope, setInfractions),
       watchPrizeUnlocks(householdId, scope, setPrizeUnlocks),
       watchSettings(householdId, setSettings),
     ];
@@ -118,6 +123,7 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
       passes,
       ledger,
       grants,
+      infractions,
       prizes,
       prizeUnlocks,
       settings,
@@ -127,7 +133,7 @@ export function HouseholdProvider({ children }: { children: ReactNode }) {
         ? byId.get(settings.primaryCaregiverId) ?? null
         : members.find((m) => m.isPrimaryCaregiver) ?? null,
     };
-  }, [ready, members, chores, completions, deeds, passes, ledger, grants, prizes, prizeUnlocks, settings]);
+  }, [ready, members, chores, completions, deeds, passes, ledger, grants, infractions, prizes, prizeUnlocks, settings]);
 
   return <HouseholdContext.Provider value={value}>{children}</HouseholdContext.Provider>;
 }

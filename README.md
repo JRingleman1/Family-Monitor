@@ -68,6 +68,14 @@ remove it, which matters: pay a kid for basic decency and you have given it a
 price she can withhold. Every earning chore on her track serves somebody else, and
 her prize ladder runs on empathy, which she cannot self-award.
 
+Consequences work the same way round. A parent can log a refusal or a job done
+badly on purpose, which deducts minutes and can reset that day's streak. It
+cannot touch empathy points, and there is no control for it: those points record
+what a child did for somebody else, and refusing a chore doesn't make that
+untrue. Chores stay out of the prize ladder in both directions, which is what
+stops a kindness ladder turning into an obedience score. Every deduction lands
+as a named line in the child's own ledger with the reason in the parent's words.
+
 `docs/DESIGN.md` gives the reasoning behind every rule, including the failure mode
 each one guards against.
 
@@ -97,7 +105,7 @@ src/state/      Auth and the shared household subscription.
 src/screens/    Kid app (one screen) and parent app (seven tabs).
 firestore.rules The guarantees that actually hold: no self-nominated deeds, no
                 child reading the prize list, no invented minutes.
-src/rules/      40 tests proving those guarantees, against the emulator.
+src/rules/      45 tests proving those guarantees, against the emulator.
 scripts/tracks.mjs  The two tracks, as data, with the reasoning written down.
 scripts/seed.mjs    Loads them into a household.
 docs/           Setup, the Family Link situation, and the design rationale.
@@ -109,8 +117,8 @@ docs/           Setup, the Family Link situation, and the design rationale.
 
 ```bash
 npm install
-npm test            # 114 tests on the economy engine, no emulator needed
-npm run test:rules  # 40 tests on the security rules, boots the emulator
+npm test            # 126 tests on the economy engine, no emulator needed
+npm run test:rules  # 45 tests on the security rules, boots the emulator
 npm run dev
 ```
 

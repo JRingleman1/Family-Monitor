@@ -37,6 +37,10 @@ export const paths = {
     doc(db, 'households', hid, 'stats', childId),
   settings: (db: Firestore, hid: string) =>
     doc(db, 'households', hid, 'config', 'settings'),
+  infractions: (db: Firestore, hid: string) =>
+    collection(db, 'households', hid, 'infractions'),
+  infraction: (db: Firestore, hid: string, id: string) =>
+    doc(db, 'households', hid, 'infractions', id),
   /** Per-child tuning. Document id is the child's member id. */
   childPolicies: (db: Firestore, hid: string) =>
     collection(db, 'households', hid, 'childPolicies'),

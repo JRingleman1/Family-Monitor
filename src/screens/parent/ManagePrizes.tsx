@@ -32,7 +32,8 @@ const METRIC_NOTE: Record<PrizeMetric, string> = {
  */
 export default function ManagePrizes() {
   const { householdId } = useAuth();
-  const { children, prizes, prizeUnlocks, completions, balanceFor } = useHousehold();
+  const { children, prizes, prizeUnlocks, completions, infractions, balanceFor } =
+    useHousehold();
 
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -51,11 +52,11 @@ export default function ManagePrizes() {
       map.set(child.id, {
         empathy: balance.empathyPoints,
         lifetimeMinutes: balance.lifetimeMinutes,
-        streakDays: currentStreakDays({ completions, childId: child.id, now }),
+        streakDays: currentStreakDays({ completions, infractions, childId: child.id, now }),
       });
     }
     return map;
-  }, [children, balanceFor, completions]);
+  }, [children, balanceFor, completions, infractions]);
 
   async function onAdd(event: React.FormEvent) {
     event.preventDefault();
